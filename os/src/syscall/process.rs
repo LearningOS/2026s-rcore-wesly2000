@@ -1,6 +1,6 @@
 //! Process management syscalls
 use crate::{
-    task::{exit_current_and_run_next, suspend_current_and_run_next},
+    task::{exit_current_and_run_next, suspend_current_and_run_next, get_current_syscall_count},
     timer::get_time_us,
 };
 
@@ -41,5 +41,14 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 // TODO: implement the syscall
 pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
     trace!("kernel: sys_trace");
+    match _trace_request {
+        2 => {
+            // Return the syscall count in current task
+            if let Some(cnt) = get_current_syscall_count(_id) {
+                return cnt as isize;
+            }
+        },
+        _ => { return -1; },
+    }
     -1
 }
