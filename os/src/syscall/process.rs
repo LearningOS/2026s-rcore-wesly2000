@@ -42,6 +42,13 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
     trace!("kernel: sys_trace");
     match _trace_request {
+        0 => unsafe { return *(_id as *const u8) as isize; },
+        1 => {
+            unsafe {
+                *(_id as *mut u8) = _data as u8;
+                return 0;
+            }
+        },
         2 => {
             // Return the syscall count in current task
             if let Some(cnt) = get_current_syscall_count(_id) {
