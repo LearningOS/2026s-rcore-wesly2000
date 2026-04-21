@@ -137,13 +137,13 @@ impl TaskManager {
         }
     }
 
-    fn get_current_syscall_count(&self, syscall_id: usize) -> Option<usize> {
+    fn get_current_syscall_count(&self, syscall_id: usize) -> Option<u16> {
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
         inner.tasks[current].task_syscall_counts.get(syscall_id).copied()
     }
 
-    fn increase_current_syscall_count(&self, syscall_id: usize) -> Option<usize> {
+    fn increase_current_syscall_count(&self, syscall_id: usize) -> Option<u16> {
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
         match inner.tasks[current].task_syscall_counts.get_mut(syscall_id) {
@@ -190,11 +190,11 @@ pub fn exit_current_and_run_next() {
 }
 
 /// Obtain the syscall count for the given syscall ID in current task
-pub fn get_current_syscall_count(syscall_id: usize) -> Option<usize> {
+pub fn get_current_syscall_count(syscall_id: usize) -> Option<u16> {
     TASK_MANAGER.get_current_syscall_count(syscall_id)
 }
 
 /// Increase the syscall count for the given syscall ID in current task
-pub fn increase_current_syscall_count(syscall_id: usize) -> Option<usize> {
+pub fn increase_current_syscall_count(syscall_id: usize) -> Option<u16> {
     TASK_MANAGER.increase_current_syscall_count(syscall_id)
 }
