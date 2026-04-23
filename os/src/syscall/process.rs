@@ -2,6 +2,8 @@
 
 use crate::task::{change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, current_user_token};
 use crate::mm::*;
+use crate::timer::get_time_us;
+use core::mem::size_of;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -27,9 +29,34 @@ pub fn sys_yield() -> isize {
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
-pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
+pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    -1
+
+    let us = get_time_us();
+    let sec = us / 1_000_000;
+    let usec = us % 1_000_000;
+
+    // Use translated_byte_buffer to handle cross-page writes safely
+    let token = current_user_token();
+    let mut buffers = translated_byte_buffer(token, ts as *const u8, size_of::<TimeVal>());
+
+    // Write sec and usec through the translated buffers
+    let real_ts = buffers[0].as_mut_ptr() as *mut TimeVal;
+
+    unsafe { *(real_ts) = TimeVal { sec, usec }};
+    // let mut offset = 0;
+    // let timeval_bytes = [
+    //     &sec.to_ne_bytes()[..],
+    //     &usec.to_ne_bytes()[..],
+    // ].concat();
+
+    // for buffer in buffers {
+    //     let copy_len = buffer.len().min(timeval_bytes.len() - offset);
+    //     buffer[..copy_len].copy_from_slice(&timeval_bytes[offset..offset + copy_len]);
+    //     offset += copy_len;
+    // }
+
+    0
 }
 
 /// TODO: Finish sys_trace to pass testcases
@@ -51,16 +78,26 @@ pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
     let start_vpn: usize = usize::from(start_va.floor());
     let end_vpn: usize = usize::from(end_va.ceil());
 
-    if !start_va.aligned() { return -1; }       // Not aligned to page size
-    if prot & !0x7 != 0 { return -1; }          // Bits need to be 0 except for the lowest 3 bits
-    if prot & 0x7 == 0 { return -1; }           // Meaningless allocation
+    if !start_va.aligned() { 
+        trace!("Not aligned to page size");
+        return -1; 
+    }  
+    if prot & !0x7 != 0 { 
+        trace!("Bits need to be 0 except for the lowest 3 bits");
+        return -1; 
+    }         
+    if prot & 0x7 == 0 { 
+        trace!("Meaningless allocation");
+        return -1; 
+    }
 
     let token = current_user_token();
     let mut page_table = PageTable::from_token(token);
 
     for vpn in start_vpn..end_vpn {
         if let Some(_) = page_table.translate(VirtPageNum::from(vpn)) {
-            return -1;                          // Virtual address has been processed
+            trace!("Virtual address has been processed");
+            return -1;
         }
     }
 
@@ -90,7 +127,10 @@ pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
             Some(tracker) => { 
                 page_table.map(VirtPageNum::from(vpn), tracker.ppn, flags);
              },
-            None => { return -1; }              // No enough space
+            None => { 
+                trace!("No enough space");
+                return -1; 
+            }
         } 
     }
 
