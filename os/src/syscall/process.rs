@@ -38,23 +38,20 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 
     // Use translated_byte_buffer to handle cross-page writes safely
     let token = current_user_token();
-    let mut buffers = translated_byte_buffer(token, ts as *const u8, size_of::<TimeVal>());
+    let buffers = translated_byte_buffer(token, ts as *const u8, size_of::<TimeVal>());
 
     // Write sec and usec through the translated buffers
-    let real_ts = buffers[0].as_mut_ptr() as *mut TimeVal;
+    let mut offset = 0;
+    let timeval_bytes = [
+        &sec.to_ne_bytes()[..],
+        &usec.to_ne_bytes()[..],
+    ].concat();
 
-    unsafe { *(real_ts) = TimeVal { sec, usec }};
-    // let mut offset = 0;
-    // let timeval_bytes = [
-    //     &sec.to_ne_bytes()[..],
-    //     &usec.to_ne_bytes()[..],
-    // ].concat();
-
-    // for buffer in buffers {
-    //     let copy_len = buffer.len().min(timeval_bytes.len() - offset);
-    //     buffer[..copy_len].copy_from_slice(&timeval_bytes[offset..offset + copy_len]);
-    //     offset += copy_len;
-    // }
+    for buffer in buffers {
+        let copy_len = buffer.len().min(timeval_bytes.len() - offset);
+        buffer[..copy_len].copy_from_slice(&timeval_bytes[offset..offset + copy_len]);
+        offset += copy_len;
+    }
 
     0
 }
