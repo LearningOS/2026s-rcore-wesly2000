@@ -1,6 +1,6 @@
 //! Process management syscalls
 
-use crate::task::{change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, current_user_token};
+use crate::task::{change_program_brk, current_user_token, exit_current_and_run_next, get_current_syscall_count, suspend_current_and_run_next};
 use crate::mm::*;
 use crate::timer::get_time_us;
 use core::mem::size_of;
@@ -65,31 +65,41 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     let us = get_time_us();
     let sec = us / 1_000_000;
     let usec = us % 1_000_000;
-
-    // Use translated_byte_buffer to handle cross-page writes safely
-    let token = current_user_token();
-    let buffers = translated_byte_buffer(token, ts as *const u8, size_of::<TimeVal>());
-
-    // Write sec and usec through the translated buffers
-    let mut offset = 0;
+    
     let timeval_bytes = [
         &sec.to_ne_bytes()[..],
         &usec.to_ne_bytes()[..],
     ].concat();
 
-    for buffer in buffers {
-        let copy_len = buffer.len().min(timeval_bytes.len() - offset);
-        buffer[..copy_len].copy_from_slice(&timeval_bytes[offset..offset + copy_len]);
-        offset += copy_len;
-    }
+    write_mem(ts as *const u8, &timeval_bytes);
 
     0
 }
 
 /// TODO: Finish sys_trace to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
-pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
+pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
     trace!("kernel: sys_trace");
+    const LEN: usize = size_of::<usize>();
+    match trace_request {
+        0 => { 
+                let mut buffer: [u8; LEN] = [0; LEN];
+                read_mem(id as *const u8, &mut buffer);
+                return usize::from_ne_bytes(buffer) as isize; 
+        },
+        1 => {
+                let buffer = &data.to_ne_bytes()[..];
+                write_mem(id as *const u8, &buffer);
+                return 0;
+        },
+        2 => {
+            // Return the syscall count in current task
+            if let Some(cnt) = get_current_syscall_count(id) {
+                return cnt as isize;
+            }
+        },
+        _ => { return -1; },
+    }
     -1
 }
 
