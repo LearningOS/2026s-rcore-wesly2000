@@ -115,3 +115,13 @@ lazy_static! {
 pub fn add_initproc() {
     add_task(INITPROC.clone());
 }
+
+/// Obtain the syscall count for the given syscall ID in current task
+pub fn get_current_syscall_count(syscall_id: usize) -> Option<u16> {
+    TASK_MANAGER.get_current_syscall_count(syscall_id)
+}
+
+/// Increase the syscall count for the given syscall ID in current task
+pub fn increase_current_syscall_count(syscall_id: usize) -> Option<u16> {
+    TASK_MANAGER.increase_current_syscall_count(syscall_id)
+}

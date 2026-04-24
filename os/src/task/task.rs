@@ -68,6 +68,9 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// Syscall count table
+    pub task_syscall_counts: [u16; 512],
 }
 
 impl TaskControlBlockInner {
@@ -120,6 +123,7 @@ impl TaskControlBlock {
                     program_brk: user_sp,
                 })
             },
+            task_syscall_counts: [0; 512]
         };
         // prepare TrapContext in user space
         let trap_cx = task_control_block.inner_exclusive_access().get_trap_cx();
