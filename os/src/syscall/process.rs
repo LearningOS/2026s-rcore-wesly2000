@@ -26,6 +26,36 @@ pub fn sys_yield() -> isize {
     0
 }
 
+/// Write to address with len bytes from `src`. It handles user page table fetching,
+/// va to pa translation where segmentation might exist.
+fn write_mem(ptr: *const u8, src: &[u8]) {
+    let token = current_user_token();
+    let buffers = translated_byte_buffer(token, ptr, src.len());
+
+    let mut offset = 0;
+
+    for buffer in buffers {
+        let copy_len = buffer.len().min(src.len() - offset);
+        buffer[..copy_len].copy_from_slice(&src[offset..offset + copy_len]);
+        offset += copy_len;
+    }
+}
+
+
+/// Read from address with len bytes to `dst`. It handles user page table fetching,
+/// va to pa translation where segmentation might exist.
+fn read_mem(ptr: *const u8, dst: &mut [u8]) {
+    let token = current_user_token();
+    let buffers = translated_byte_buffer(token, ptr, dst.len());
+    let mut offset = 0;
+
+    for buffer in buffers {
+        let copy_len = buffer.len().min(dst.len() - offset);
+        dst[offset..offset + copy_len].copy_from_slice(&buffer[..copy_len]);
+        offset += copy_len;
+    }
+}
+
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
