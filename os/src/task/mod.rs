@@ -174,6 +174,19 @@ impl TaskManager {
             None => None
         }
     }
+
+    /// build address map for current task
+    fn mmap_current_task(&self, start: usize, len: usize, prot: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].mmap(start, len, prot)
+    }
+    /// unmap the virtual address map for current task
+    fn munmap_current_task(&self, start: usize, len: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].munmap(start, len)
+    }
 }
 
 /// Run the first task in task list.
@@ -232,4 +245,14 @@ pub fn get_current_syscall_count(syscall_id: usize) -> Option<u16> {
 /// Increase the syscall count for the given syscall ID in current task
 pub fn increase_current_syscall_count(syscall_id: usize) -> Option<u16> {
     TASK_MANAGER.increase_current_syscall_count(syscall_id)
+}
+
+/// build address map for current task
+pub fn mmap_current_task(start: usize, len: usize, prot: usize) -> isize {
+    TASK_MANAGER.mmap_current_task(start, len, prot)
+}
+
+/// build address map for current task
+pub fn munmap_current_task(start: usize, len: usize) -> isize {
+    TASK_MANAGER.munmap_current_task(start, len)
 }

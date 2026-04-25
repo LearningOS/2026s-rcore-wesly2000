@@ -39,6 +39,13 @@ pub struct MemorySet {
     areas: Vec<MapArea>,
 }
 
+/// Readable flag
+pub const PROT_R: usize = 1;
+/// Writable flag
+pub const PROT_W: usize = 1 << 1;
+/// Executable flag
+pub const PROT_X: usize = 1 << 2;
+
 impl MemorySet {
     /// Create a new empty `MemorySet`.
     pub fn new_bare() -> Self {
@@ -261,6 +268,93 @@ impl MemorySet {
         } else {
             false
         }
+    }
+
+    /// build address map
+    pub fn mmap(&mut self, start: usize, len: usize, prot: usize) -> isize {
+        let start_va = VirtAddr::from(start);
+        let end_va = VirtAddr::from(start + len);
+
+        let start_vpn: usize = usize::from(start_va.floor());
+        let end_vpn: usize = usize::from(end_va.ceil());
+
+        if !start_va.aligned() { 
+            error!("Not aligned to page size");
+            return -1; 
+        }  
+        if prot & !0x7 != 0 { 
+            error!("Bits need to be 0 except for the lowest 3 bits");
+            return -1; 
+        }         
+        if prot & 0x7 == 0 { 
+            error!("Meaningless allocation");
+            return -1; 
+        }
+
+        let mut permission: MapPermission = MapPermission::U;
+        if prot & PROT_R > 0 {
+            permission |= MapPermission::R;
+        }
+        if prot & PROT_W > 0 {
+            permission |= MapPermission::W;
+        }
+        if prot & PROT_X > 0 {
+            permission |= MapPermission::X;
+        }
+
+        // Check if the vpn has been processed
+        for vpn in start_vpn..end_vpn {
+            if let Some(pte) = self.page_table.translate(VirtPageNum::from(vpn)) {
+                if pte.is_valid() {
+                    error!("VPN {:?} has been processed, its PPN is {:?}", vpn, pte.ppn());
+                    return -1;
+                }
+            } 
+        }
+        
+        self.insert_framed_area(start_va, end_va, permission);
+
+        0
+    }
+
+    /// unmap the virtual address map
+    pub fn munmap(&mut self, start: usize, len: usize) -> isize {
+        let start_va = VirtAddr::from(start);
+        let end_va = VirtAddr::from(start + len);
+
+        let start_vpn: usize = usize::from(start_va.floor());
+        let end_vpn: usize = usize::from(end_va.ceil());
+
+        if !start_va.aligned() { 
+            error!("Not aligned to page size");
+            return -1; 
+        }  
+
+        for vpn in start_vpn..end_vpn {
+            /*
+             * If the page is never mapped, or the PTE is no longer valid (unmapped before, and PTE is set to 0),
+             * we should not unmap and return error.
+             */
+            match self.page_table.translate(VirtPageNum::from(vpn)) {
+                None => {
+                    error!("Virtual page is never in use");
+                    return -1;
+                }
+                Some(pte) => {
+                    if !pte.is_valid() {
+                        error!("Virtual page is not in use, possibly unmapped before");
+                        return -1;
+                    }
+                }
+            }
+        }
+
+        if !self.shrink_to(start_va, start_va) {
+            error!("Unmap failed, invalid address range");
+            return -1;
+        }
+
+        0
     }
 }
 /// map area structure, controls a contiguous piece of virtual memory
