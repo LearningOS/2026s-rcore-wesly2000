@@ -6,13 +6,12 @@ use crate::{
     loader::get_app_data_by_name,
     mm::{translated_refmut, translated_str},
     task::{
-        add_task, current_task, current_user_token, current_user_token, exit_current_and_run_next, get_current_syscall_count,
+        add_task, current_task, current_user_token, exit_current_and_run_next,
         mmap_current_task, munmap_current_task, suspend_current_and_run_next,
     },
 };
 use crate::mm::*;
 use crate::timer::get_time_us;
-use core::mem::size_of;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -64,61 +63,6 @@ fn read_mem(ptr: *const u8, dst: &mut [u8]) {
         offset += copy_len;
     }
 }
-
-/// Max avaiable addr that the user could touch
-const MAX_ADDR: usize = 0x0000_003f_ffff_ffff;
-
-/// Check if an address to Read/Write is valid (through page table).
-/// 
-/// op indicates the operation: Read (1) / Write (1 << 1) / Executtion (1 << 2), 
-/// consistent with the format of prot.
-fn addr_check(start: usize, len: usize, op: usize) -> bool {
-    if !MAX_ADDR & start > 0 {
-        error!("Address not allowed in user space");
-        return false;
-    } 
-    if op & !(PROT_R|PROT_W|PROT_X) != 0 {
-        error!("Invalid operation");
-        return false;
-    }
-
-    let start_va = VirtAddr::from(start);
-    let end_va = VirtAddr::from(start + len);
-
-    let start_vpn: usize = usize::from(start_va.floor());
-    let end_vpn: usize = usize::from(end_va.ceil());
-
-    let token = current_user_token();
-    let page_table = PageTable::from_token(token);
-
-    for vpn in start_vpn..end_vpn {
-        match page_table.translate(VirtPageNum::from(vpn)) {
-            None => {
-                error!("Virtual page is never in use");
-                return false;
-            }
-            Some(pte) => {
-                if !pte.is_valid() {
-                    error!("Virtual page is not valid");
-                    return false;
-                }
-                if !pte.user_available() {
-                    error!("Page could not be accessed by user");
-                    return false;
-                }
-                if ((op & PROT_R > 0) && !pte.readable())
-                || ((op & PROT_W > 0) && !pte.writable())
-                || ((op & PROT_X > 0) && !pte.executable()) {
-                    error!("Operation is now allowed");
-                    return false;
-                }
-            }
-        }
-    }
-
-    true
-}
-
 
 pub fn sys_getpid() -> isize {
     trace!("kernel: sys_getpid pid:{}", current_task().unwrap().pid.0);
@@ -209,41 +153,6 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     write_mem(ts as *const u8, &timeval_bytes);
 
     0
-}
-
-/// TODO: Finish sys_trace to pass testcases
-/// HINT: You might reimplement it with virtual memory management.
-pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
-    trace!("kernel: sys_trace");
-    const LEN: usize = size_of::<usize>();
-    match trace_request {
-        0 => { 
-                if !addr_check(id, LEN, PROT_R) {
-                    error!("Invalid read address");
-                    return -1;
-                }
-                let mut buffer: [u8; LEN] = [0; LEN];
-                read_mem(id as *const u8, &mut buffer);
-                return usize::from_ne_bytes(buffer) as isize; 
-        },
-        1 => {
-                if !addr_check(id, LEN, PROT_W) {
-                    error!("Invalid write address");
-                    return -1;
-                }
-                let buffer = &data.to_ne_bytes()[..];
-                write_mem(id as *const u8, &buffer);
-                return 0;
-        },
-        2 => {
-            // Return the syscall count in current task
-            if let Some(cnt) = get_current_syscall_count(id) {
-                return cnt as isize;
-            }
-        },
-        _ => { return -1; },
-    }
-    -1
 }
 
 // YOUR JOB: Implement mmap.
