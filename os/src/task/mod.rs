@@ -123,10 +123,10 @@ pub fn add_initproc() {
 
 /// build address map for current task
 pub fn mmap_current_task(start: usize, len: usize, prot: usize) -> isize {
-    TASK_MANAGER.mmap_current_task(start, len, prot)
+    current_task().unwrap().mmap(start, len, prot)
 }
 
 /// build address map for current task
 pub fn munmap_current_task(start: usize, len: usize) -> isize {
-    TASK_MANAGER.munmap_current_task(start, len)
+    current_task().unwrap().munmap(start, len)
 }
