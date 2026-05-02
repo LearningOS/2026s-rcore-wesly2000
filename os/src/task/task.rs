@@ -38,6 +38,13 @@ impl TaskControlBlock {
     }
 }
 
+const BIG_STRIDE: usize = 1 << 16;
+/// Initial stride
+const INIT_STRIDE: usize = 16;
+/// Initial priority
+const INIT_PRIO: usize = 2;
+
+
 pub struct TaskControlBlockInner {
     /// The physical page number of the frame where the trap context is placed
     pub trap_cx_ppn: PhysPageNum,
@@ -72,8 +79,11 @@ pub struct TaskControlBlockInner {
     /// Program break
     pub program_brk: usize,
 
-    /// Syscall count table
-    pub task_syscall_counts: [u16; 512],
+    /// Stride value for scheduling, 0 (default) for the new one
+    stride: usize,
+
+    /// Priority for scheduling
+    priority: usize,
 }
 
 impl TaskControlBlockInner {
@@ -96,6 +106,21 @@ impl TaskControlBlockInner {
             self.fd_table.push(None);
             self.fd_table.len() - 1
         }
+    }
+    pub fn increase_stride(&mut self) {
+        self.stride += BIG_STRIDE / self.priority;
+    }
+    /// get stride
+    pub fn stride(&self) -> usize {
+        self.stride
+    }   
+    pub fn set_priority(&mut self, prio: isize) -> isize{    
+        if prio <= 1 {
+            return -1;
+        }    
+
+        self.priority = prio as usize;
+        prio
     }
 }
 
@@ -138,9 +163,10 @@ impl TaskControlBlock {
                     ],
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    stride: INIT_STRIDE,
+                    priority: INIT_PRIO,
                 })
             },
-            task_syscall_counts: [0; 512]
         };
         // prepare TrapContext in user space
         let trap_cx = task_control_block.inner_exclusive_access().get_trap_cx();
@@ -220,6 +246,8 @@ impl TaskControlBlock {
                     fd_table: new_fd_table,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    stride: INIT_STRIDE,
+                    priority: INIT_PRIO,
                 })
             },
         });
