@@ -241,12 +241,12 @@ impl TaskControlBlock {
         }
     }
     /// build address map
-    pub fn mmap(&mut self, start: usize, len: usize, prot: usize) -> isize {
-        self.memory_set.mmap(start, len, prot)
+    pub fn mmap(&self, start: usize, len: usize, prot: usize) -> isize {
+        self.inner.exclusive_access().memory_set.mmap(start, len, prot)
     }
     /// unmap the virtual address map
-    pub fn munmap(&mut self, start: usize, len: usize) -> isize {
-        self.memory_set.munmap(start, len)
+    pub fn munmap(&self, start: usize, len: usize) -> isize {
+        self.inner.exclusive_access().memory_set.munmap(start, len)
     }
 }
 
