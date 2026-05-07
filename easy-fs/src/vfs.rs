@@ -1,6 +1,6 @@
 use super::{
     block_cache_sync_all, get_block_cache, BlockDevice, DirEntry, DiskInode, DiskInodeType,
-    EasyFileSystem, DIRENT_SZ,
+    EasyFileSystem, DIRENT_SZ
 };
 use alloc::string::String;
 use alloc::sync::Arc;
@@ -203,5 +203,74 @@ impl Inode {
     pub fn ino(&self) -> u64 {
         let fs = self.fs.lock();
         fs.get_inode_idx(self.block_id, self.block_offset)
+    }
+    /// Add a directory entry pointing to the given inode_id
+    pub fn add_dirent(&self, name: &str, inode_id: u32) {
+        let mut fs = self.fs.lock();
+        self.modify_disk_inode(|root_inode| {
+            assert!(root_inode.is_dir());
+            let file_count = (root_inode.size as usize) / DIRENT_SZ;
+            let new_size = (file_count + 1) * DIRENT_SZ;
+            self.increase_size(new_size as u32, root_inode, &mut fs);
+            let dirent = DirEntry::new(name, inode_id);
+            root_inode.write_at(
+                file_count * DIRENT_SZ,
+                dirent.as_bytes(),
+                &self.block_device,
+            );
+        });
+        block_cache_sync_all();
+    }
+    /// Remove a directory entry by name, shift subsequent entries forward
+    pub fn remove_dirent(&self, name: &str) -> bool {
+        let _fs = self.fs.lock();
+        // find entry index
+        let entry_idx = self.read_disk_inode(|root_inode| {
+            let file_count = (root_inode.size as usize) / DIRENT_SZ;
+            for i in 0..file_count {
+                let mut dirent = DirEntry::empty();
+                assert_eq!(
+                    root_inode.read_at(i * DIRENT_SZ, dirent.as_bytes_mut(), &self.block_device,),
+                    DIRENT_SZ,
+                );
+                if dirent.name() == name {
+                    return Some(i);
+                }
+            }
+            None
+        });
+        if let Some(entry_idx) = entry_idx {
+            self.modify_disk_inode(|root_inode| {
+                let file_count = (root_inode.size as usize) / DIRENT_SZ;
+                // shift entries forward
+                for i in entry_idx..file_count - 1 {
+                    let mut dirent = DirEntry::empty();
+                    assert_eq!(
+                        root_inode.read_at((i + 1) * DIRENT_SZ, dirent.as_bytes_mut(), &self.block_device,),
+                        DIRENT_SZ,
+                    );
+                    root_inode.write_at(
+                        i * DIRENT_SZ,
+                        dirent.as_bytes(),
+                        &self.block_device,
+                    );
+                }
+                // shrink size
+                let new_size = (file_count - 1) * DIRENT_SZ;
+                root_inode.decrease_size(new_size as u32);
+            });
+            block_cache_sync_all();
+            true
+        } else {
+            false
+        }
+    }
+    /// Increase nlink count
+    pub fn increase_nlink(&self) {
+        self.modify_disk_inode(|disk_inode| disk_inode.increase_nlink());
+    }
+    /// Decrease nlink count, return 0 on success, -1 if nlink already 0
+    pub fn decrease_nlink(&self) -> isize {
+        self.modify_disk_inode(|disk_inode| disk_inode.decrease_nlink())
     }
 }

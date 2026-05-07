@@ -113,6 +113,19 @@ impl DiskInode {
     pub fn nlink(&self) -> u32 {
         self.nlink
     }
+    /// Increase nlink
+    pub fn increase_nlink(&mut self) -> isize {
+        self.nlink += 1;
+        0
+    }
+    pub fn decrease_nlink(&mut self) -> isize {
+        if self.nlink > 0 {
+            self.nlink -= 1;
+            return 0;
+        }
+        -1
+    }
+    /// Decrease
     /// Return block number correspond to size.
     pub fn data_blocks(&self) -> u32 {
         Self::_data_blocks(self.size)
@@ -239,6 +252,11 @@ impl DiskInode {
                     }
                 }
             });
+    }
+    /// Decrease the size of a disk_inode, note that only root_inode needs to call this to
+    /// clear DirEntry, so we don't manage block deallocation.
+    pub fn decrease_size(&mut self, new_size: u32) {
+        self.size = new_size;
     }
 
     /// Clear size to zero and return blocks that should be deallocated.

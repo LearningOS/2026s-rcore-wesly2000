@@ -1,5 +1,6 @@
 //! File and filesystem-related syscalls
-use crate::fs::{OpenFlags, Stat, open_file};
+
+use crate::fs::{OpenFlags, Stat, open_file, ROOT_INODE};
 use crate::mm::{translated_byte_buffer, translated_str, UserBuffer};
 use crate::syscall::process::write_mem;
 use crate::task::{current_task, current_user_token};
@@ -109,19 +110,44 @@ pub fn sys_fstat(fd: usize, st: *mut Stat) -> isize {
 }
 
 /// YOUR JOB: Implement linkat.
-pub fn sys_linkat(_old_name: *const u8, _new_name: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_linkat NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
+pub fn sys_linkat(old_name: *const u8, new_name: *const u8) -> isize {
+    trace!("kernel:pid[{}] sys_linkat", current_task().unwrap().pid.0);
+    let token = current_user_token();
+    let old_path = translated_str(token, old_name);
+    let new_path = translated_str(token, new_name);
+    if old_path == new_path {
+        return -1;
+    }
+    if let Some(inode) = ROOT_INODE.find(&old_path) {
+        let inode_id = inode.ino() as u32;
+        // add new directory entry in root dir pointing to the same inode
+        ROOT_INODE.add_dirent(&new_path, inode_id);
+        // increment nlink
+        inode.increase_nlink();
+        return 0;
+    }
     -1
 }
 
 /// YOUR JOB: Implement unlinkat.
-pub fn sys_unlinkat(_name: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_unlinkat NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
+pub fn sys_unlinkat(name: *const u8) -> isize {
+    trace!("kernel:pid[{}] sys_unlinkat", current_task().unwrap().pid.0);
+    let token = current_user_token();
+    let path = translated_str(token, name);
+    if let Some(inode) = ROOT_INODE.find(&path) {
+        // remove directory entry from root dir
+        if !ROOT_INODE.remove_dirent(&path) {
+            return -1;
+        }
+        // decrement nlink
+        if inode.decrease_nlink() < 0 {
+            return -1;
+        }
+        // if nlink reaches 0, free the inode data
+        if inode.get_nlink() == 0 {
+            inode.clear();
+        }
+        return 0;
+    }
     -1
 }
