@@ -87,8 +87,6 @@ pub fn sys_fstat(fd: usize, st: *mut Stat) -> isize {
     }
     if let Some(file) = &inner.fd_table[fd] {
         let file = file.clone();
-        // release current task TCB manually to avoid multi-borrow
-        drop(inner);
         if let Some(stat) = file.stat() {
             let stat_bytes = unsafe {
                 core::slice::from_raw_parts(
@@ -96,6 +94,10 @@ pub fn sys_fstat(fd: usize, st: *mut Stat) -> isize {
                     core::mem::size_of::<Stat>(),
                 )
             };
+            // release current task TCB manually to avoid multi-borrow
+            // write_mem uses current_user_token, which borrows inner again,
+            // so we need to drop before it to avoid another borrow
+            drop(inner);
             write_mem(st as *const u8, &stat_bytes);
             0
         } else{
