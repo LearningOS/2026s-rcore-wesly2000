@@ -183,4 +183,25 @@ impl Inode {
         });
         block_cache_sync_all();
     }
+    /// get the number of links to the inode
+    pub fn get_nlink(&self) -> u32 {
+        let _fs = self.fs.lock();
+        self.read_disk_inode(|disk_inode| disk_inode.nlink())
+    }
+    /// check if this inode is a directory
+    pub fn is_dir(&self) -> bool {
+        let _fs = self.fs.lock();
+        self.read_disk_inode(|disk_inode| disk_inode.is_dir())
+    }
+    /// check if this inode is a file
+    #[allow(unused)] 
+    pub fn is_file(&self) -> bool {
+        let _fs = self.fs.lock();
+        self.read_disk_inode(|disk_inode| disk_inode.is_file())
+    }
+    /// get inode index
+    pub fn ino(&self) -> u64 {
+        let fs = self.fs.lock();
+        fs.get_inode_idx(self.block_id, self.block_offset)
+    }
 }

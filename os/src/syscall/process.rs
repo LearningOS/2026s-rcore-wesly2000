@@ -34,7 +34,7 @@ pub fn sys_yield() -> isize {
 
 /// Write to address with len bytes from `src`. It handles user page table fetching,
 /// va to pa translation where segmentation might exist.
-fn write_mem(ptr: *const u8, src: &[u8]) {
+pub fn write_mem(ptr: *const u8, src: &[u8]) {
     let token = current_user_token();
     let buffers = translated_byte_buffer(token, ptr, src.len());
 
