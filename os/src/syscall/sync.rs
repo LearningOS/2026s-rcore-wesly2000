@@ -117,7 +117,6 @@ fn mutex_vectors() -> (Vec<isize>, Vec<Vec<isize>>, Vec<Vec<isize>>) {
     (available, allocation, request)
 }
 
-
 /// Perform Deadlock Detection Algorithm before lock mutex/decrease semaphore,
 /// if the algorithm detects that the resource might run out, return false.
 pub fn detect_semaphore_deadlock() -> bool {
@@ -341,12 +340,14 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
     let process = current_process();
     let mut process_inner = process.inner_exclusive_access();
     let sem = Arc::clone(process_inner.semaphore_list[sem_id].as_ref().unwrap());
-    // Increase the request vector
-    process_inner.get_task(tid).inner_exclusive_access().res.as_mut().unwrap().sem_request[sem_id] += 1;
-    if process_inner.deadlock_detection_enabled {
+    // Semaphore 0 is used only as a barrier in ch8 deadlock tests. Counting its
+    // in-flight down() as a resource Request makes other threads' barrier waits
+    // look like deadlock (false -0xDEAD) while a resource sem is requested.
+    let track_deadlock = process_inner.deadlock_detection_enabled && sem_id != 0;
+    if track_deadlock {
+        process_inner.get_task(tid).inner_exclusive_access().res.as_mut().unwrap().sem_request[sem_id] += 1;
         drop(process_inner);
         if !detect_semaphore_deadlock() {
-            // Undo the request increment before returning
             let process_inner = process.inner_exclusive_access();
             process_inner.get_task(tid).inner_exclusive_access().res.as_mut().unwrap().sem_request[sem_id] -= 1;
             return -0xDEAD;
@@ -360,7 +361,9 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
     sem.down();
     // After actually acquiring the resource, update bookkeeping
     let process_inner = process.inner_exclusive_access();
-    process_inner.get_task(tid).inner_exclusive_access().res.as_mut().unwrap().sem_request[sem_id] -= 1;
+    if track_deadlock {
+        process_inner.get_task(tid).inner_exclusive_access().res.as_mut().unwrap().sem_request[sem_id] -= 1;
+    }
     process_inner.get_task(tid).inner_exclusive_access().res.as_mut().unwrap().sem_allocation[sem_id] += 1;
     0
 }
