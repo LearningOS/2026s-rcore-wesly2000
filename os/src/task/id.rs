@@ -4,6 +4,7 @@ use super::ProcessControlBlock;
 use crate::config::{KERNEL_STACK_SIZE, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT_BASE, USER_STACK_SIZE};
 use crate::mm::{MapPermission, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
+use alloc::vec;
 use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
@@ -134,6 +135,14 @@ pub struct TaskUserRes {
     pub ustack_base: usize,
     /// process belongs to
     pub process: Weak<ProcessControlBlock>,
+    /// request vector for semaphore
+    pub sem_request: Vec<isize>,
+    /// allocation vector for semaphore
+    pub sem_allocation: Vec<isize>,
+    /// request vector for semaphore
+    pub mutex_request: Vec<isize>,
+    /// allocation vector for semaphore
+    pub mutex_allocation: Vec<isize>,
 }
 /// Return the bottom addr (low addr) of the trap context for a task
 fn trap_cx_bottom_from_tid(tid: usize) -> usize {
@@ -152,10 +161,16 @@ impl TaskUserRes {
         alloc_user_res: bool,
     ) -> Self {
         let tid = process.inner_exclusive_access().alloc_tid();
+        let sem_res_type = process.inner_exclusive_access().semaphore_list.len();
+        let mutex_res_type = process.inner_exclusive_access().mutex_list.len();
         let task_user_res = Self {
             tid,
             ustack_base,
             process: Arc::downgrade(&process),
+            sem_request: vec![0; sem_res_type],
+            sem_allocation: vec![0; sem_res_type],
+            mutex_request: vec![0; mutex_res_type],
+            mutex_allocation: vec![0; mutex_res_type],
         };
         if alloc_user_res {
             task_user_res.alloc_user_res();

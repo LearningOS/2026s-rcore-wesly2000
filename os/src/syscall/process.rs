@@ -1,10 +1,9 @@
 use crate::{
-    fs::{open_file, OpenFlags},
-    mm::{translated_ref, translated_refmut, translated_str},
+    fs::{OpenFlags, open_file},
+    mm::{translated_byte_buffer, translated_ref, translated_refmut, translated_str},
     task::{
-        current_process, current_task, current_user_token, exit_current_and_run_next, pid2process,
-        suspend_current_and_run_next, SignalFlags,
-    },
+        SignalFlags, current_process, current_task, current_user_token, exit_current_and_run_next, pid2process, suspend_current_and_run_next
+    }, timer::get_time_us,
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
 
@@ -146,17 +145,41 @@ pub fn sys_kill(pid: usize, signal: u32) -> isize {
     }
 }
 
+/// Write to address with len bytes from `src`. It handles user page table fetching,
+/// va to pa translation where segmentation might exist.
+pub fn write_mem(ptr: *const u8, src: &[u8]) {
+    let token = current_user_token();
+    let buffers = translated_byte_buffer(token, ptr, src.len());
+
+    let mut offset = 0;
+
+    for buffer in buffers {
+        let copy_len = buffer.len().min(src.len() - offset);
+        buffer[..copy_len].copy_from_slice(&src[offset..offset + copy_len]);
+        offset += copy_len;
+    }
+}
+
 /// get_time syscall
 ///
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
-pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
-        current_task().unwrap().process.upgrade().unwrap().getpid()
-    );
-    -1
+pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
+    trace!("kernel: sys_get_time");
+
+    let us = get_time_us();
+    let sec = us / 1_000_000;
+    let usec = us % 1_000_000;
+    
+    let timeval_bytes = [
+        &sec.to_ne_bytes()[..],
+        &usec.to_ne_bytes()[..],
+    ].concat();
+
+    write_mem(ts as *const u8, &timeval_bytes);
+
+    0
 }
 
 /// mmap syscall
